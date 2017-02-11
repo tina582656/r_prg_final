@@ -1,0 +1,167 @@
+---
+title: "Final"
+author: "Ting-Yu Hsiao"
+date: "2017年2月9日"
+output: 
+   html_document:
+   toc: true
+   toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##期末作業內容
+
+###讀取資料
+
+利用｀read.csv`讀取titanic資料集
+
+```{r echo=TRUE}
+titanic <- read.csv("https://storage.googleapis.com/r_rookies/kaggle_titanic_train.csv")
+```
+
+###檢視資料結構
+
+利用`str()`函數檢視titanic資料結構
+
+```{r echo=TRUE}
+str(titanic)
+```
+
+###敘述性統計
+
+利用`summary`函數作敘述性統計
+
+```{r echo=TRUE}
+summary(titanic)
+```
+
+可以看出`Age`變數中有177個遺漏值,`Embarked`有兩個遺漏值
+
+###資料整理
+
+將`Age`資料遺漏值以平均數進行填補，而`Embarked`則以S進行填補
+```{r echo=TRUE}
+summary(titanic$Age)
+
+```
+
+```{r echo = TRUE}
+summary(titanic$Embarked)
+```
+
+``` {r echo = TRUE}
+titanic <- titanic[complete.cases(titanic), ]
+titanic$Survived <- factor(titanic$Survived)
+```
+
+```{r echo = TRUE}
+
+titanic$Embarked <- as.character(titanic$Embarked)
+titanic$Embarked[titanic$Embarked == ""] <- "S"
+titanic$Embarked <- factor(titanic$Embarked)
+summary(titanic$Embarked)
+```
+
+###視覺化呈現
+
+使用 `ggplot2` 與 `plotly`。
+
+``` {r message=FALSE}
+library(ggplot2)
+library(plotly)
+```
+
+``` {r echo = TRUE}
+# 以性別來區分
+ggplot_bar_sex <- ggplot(titanic, aes(x = Sex, y = Survived, fill = Sex)) + geom_bar(stat = "identity")
+ggplot_bar_sex_plotly <- ggplotly(ggplot_bar_sex)
+ggplot_bar_sex_plotly
+```
+
+``` {r echo = TRUE}
+# 以Pclass來區分
+ggplot_bar_pclass <- ggplot(titanic, aes(x = factor(Pclass), y = Survived, fill = factor(Pclass))) + geom_bar(stat = "identity", width = .7)
+ggplot_bar_pclass_plotly <- ggplotly(ggplot_bar_pclass)
+ggplot_bar_pclass_plotly
+```
+
+### 分類模型的建立
+使用隨機森林分類模型`randomForest()`函數來預測存活率`Survived`。
+
+``` {r message = FALSE}
+# split data
+set.seed(87)
+n <- nrow(titanic)
+shuffled_titanic <- titanic[sample(n), ]
+train_indices <- 1:round(0.7 * n)
+train <- shuffled_titanic[train_indices, ]
+test_indices <- (round(0.7 * n) + 1):n
+test <- shuffled_titanic[test_indices, ]
+
+# build classifier
+library(randomForest)
+rf_clf <- randomForest(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked, data = train, ntree = 100)
+
+# accuracy calculation
+prediction <- predict(rf_clf, test[, c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked")])
+confusion_matrix <- table(test$Survived, prediction)
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+accuracy
+```
+
+### 將未知答案的資料套入我們建立好的模型進行預測
+
+``` {r echo = TRUE}
+url <- "https://storage.googleapis.com/py_ds_basic/kaggle_titanic_test.csv"
+to_predict <- read.csv(url)
+summary(to_predict)
+```
+
+### 使用平均值填補遺漏值
+- 針對`Age`和`Fare`的遺漏值進行填補。
+``` {r message = FALSE}
+library(dplyr)
+library(magrittr)
+
+# Fare
+fare_mean <- mean(to_predict$Fare, na.rm = TRUE)
+to_predict$Fare[is.na(to_predict$Fare)] <- fare_mean
+
+# Age
+mean_age_by_Pclass <- to_predict %>%
+  group_by(Pclass) %>%
+  summarise(mean_age = round(mean(Age, na.rm = TRUE)))
+filter_1 <- is.na(to_predict$Age) & to_predict$Pclass == 1
+filter_2 <- is.na(to_predict$Age) & to_predict$Pclass == 2
+filter_3 <- is.na(to_predict$Age) & to_predict$Pclass == 3
+mean_age_by_Pclass
+```
+
+``` {r echo = TRUE}
+to_predict[filter_1, ]$Age <- 41
+to_predict[filter_2, ]$Age <- 29
+to_predict[filter_3, ]$Age <- 24
+
+# Summary after imputation
+summary(to_predict)
+```
+
+### 上傳資料
+
+```{r echo = TRUE}
+predicted <- predict(rf_clf, newdata = to_predict[, c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked")])
+to_submit <- data.frame(to_predict[, "PassengerId"], predicted)
+names(to_submit) <- c("PassengerId", "Survived")
+head(to_submit, n = 10)
+```
+
+``` {r}
+write.csv(to_submit, file = "to_submit.csv", row.names = FALSE)
+```
+
+## Kaggle競賽成績
+
+![Kaggle score](kaggle score.png)
